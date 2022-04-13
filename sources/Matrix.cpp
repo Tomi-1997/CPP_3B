@@ -2,6 +2,7 @@
 #include <stdexcept>
 #include <string>
 #include <iostream>
+#include <ctype.h> // for isDigit() for input
 
 
 namespace zich
@@ -16,7 +17,7 @@ namespace zich
         return m1.cols != m2.rows;
     }
 
-    double multOfVectors(const std::vector<double>v1, const std::vector<double>v2)
+    double multOfVectors(const std::vector<double>& v1, const std::vector<double>& v2)
     {
         if (v1.size() != v2.size())
             {
@@ -38,7 +39,9 @@ namespace zich
             }
             
         if (n < 0 || m < 0) 
-            throw std::invalid_argument("Negative matrix size");
+            {
+                throw std::invalid_argument("Negative matrix size");
+            }
 
         this->rows = n;
         this->cols = m;
@@ -58,19 +61,15 @@ namespace zich
             }
         }
     }
-
-    Matrix::Matrix()
-    {
-        
-    }
     
     Matrix::Matrix(const Matrix& other)
     {
         this->cols = other.cols;
         this->rows = other.rows;
-        for (std::vector<double> r : other.myMat)
+        for (const std::vector<double>& r : other.myMat)
         {
             std::vector<double> v;
+            v.reserve(size_t(other.cols));
             for (double d : r)
             {
                 v.push_back(d);
@@ -89,36 +88,137 @@ namespace zich
             for (size_t j = 0; j < mat.cols; j++)
             {
                 if (j != 0)
-                    ans += " ";
-                ans += std::to_string(my_row.at(j));
+                    {
+                        ans += " ";
+                    }
+                ans += std::to_string( (int) my_row.at(j));
             }
 
-            ans += "]\n";
+            ans += "]";
+            if (i != mat.rows - 1)
+            {
+                ans += "\n";
+            }
 
         }
         return out << ans ;
     }
 
-
-    std::istream& operator >> (std::istream& out, Matrix& mat)
+    /**
+     * @brief Given index, return from string a double up to next ']' or whitespace.
+     * 
+     * @param in 
+     * @param ind 
+     * @return string 
+     */
+    std::string getNum(const std::string& in, int ind)
     {
-        return out;
+        std::string ans_str;
+        for (size_t i = (size_t)ind; i < in.length(); i++)
+        {
+            if (in[i] == ' ' || in[i] == ']')
+            {
+                break;
+            }
+            if(in[i] == ',')
+            {
+                throw std::invalid_argument("Invalid input of matrix");
+            }
+            ans_str += in[i];
+        }
+
+        return ans_str;
+    }
+    std::istream& operator >> (std::istream& in, Matrix& mat)
+    {
+        int col = 0;
+        int row = 0;
+        int new_row = 0;
+        std::string input(std::istreambuf_iterator<char>(in), {}); // Load input to string
+        std::vector<double> v;
+
+        bool input_start_mat = true;
+        bool input_nums = false;
+        bool input_single_num = false;
+        bool input_end_mat = false;
+
+        for (size_t i = 0; i < input.length() - 1; i++)
+        {
+            char c = input[i];
+            if (c == '[' && input_start_mat)
+            {
+                input_start_mat = false;
+                input_nums = true;
+
+                std::string num = getNum(input, (int)i + 1);
+                i = i + num.length();
+
+                v.push_back(std::stod(num));
+                new_row++;
+                continue;
+            }
+
+            if (c == ' ' && input_nums)
+            {
+                input_single_num = true;
+                continue;
+            }
+
+            if (input_single_num && isdigit(c) != 0)
+            {
+                std::string num = getNum(input, i);
+                i = i + num.length() - 1;
+                v.push_back(std::stod(num));
+                new_row++;
+                continue;                
+            }
+
+            if (c == ']' && input_nums)
+            {
+                input_nums = false;
+                input_end_mat = true;
+                input_single_num = false;
+                col++;
+                continue;
+            }
+
+            if (input_end_mat && c == ',' && input[i+1] == ' ')
+            {
+                input_end_mat = false;
+                input_start_mat = true;
+                new_row++;
+                i++;
+                continue;
+            }
+
+            if (c == '\\' && input[i+1] == 'n')
+            {
+                break;
+            }
+
+            // Different amount of numbers in a different row
+            if (row == 0 && new_row != 0 && new_row == row )
+            {
+                row = new_row;
+                new_row = 0;
+                continue;
+            }
+
+            throw std::invalid_argument("Invalid input of matrix");          
+        }
+
+        return in;
     }
 
     Matrix operator * (double num, const Matrix& mat)
     {
-        Matrix m;
-
-        for (size_t i = 0; i < mat.rows; i++)
+        Matrix m(mat);
+        for (size_t i = 0; i < m.rows; i++)
         {
-            std::vector<double> m_row;
-            std::vector<double> other_row = mat.myMat.at(i);
-
-            for (size_t j = 0; j < mat.cols; j++)
+            for (size_t j = 0; j < m.cols; j++)
             {
-                m_row.push_back(other_row.at(j) * num);
+                m.myMat.at(i).at(j) *= num;
             }
-            m.myMat.push_back(m_row);
         }
         return m;
     }
@@ -133,13 +233,13 @@ namespace zich
     // return *this;
     // }
 
-    Matrix& Matrix::operator+(const Matrix& other)
+    Matrix Matrix::operator+(const Matrix& other)
     {
         if (notCompatible(*this, other))
             {
                 throw std::invalid_argument("Different row \\ col number.");
             }
-        Matrix& m(*this);
+        Matrix m(*this);
         for (size_t i = 0; i < other.rows; i++)
         {
             for (size_t j = 0; j < other.cols; j++)
@@ -152,15 +252,15 @@ namespace zich
     Matrix Matrix::operator+()
     {
         Matrix old = *this;
-        operator++();
+        // operator++();
         return old;
     }
-    Matrix& Matrix::operator-( const Matrix& other)
+    Matrix Matrix::operator-( const Matrix& other)
     {
         if (notCompatible(*this, other))
-            throw std::invalid_argument("Different row \\ col number.");
-
-        Matrix& m(*this);
+{            throw std::invalid_argument("Different row \\ col number.");
+}
+        Matrix m(*this);
         for (size_t i = 0; i < other.rows; i++)
         {
             for (size_t j = 0; j < other.cols; j++)
@@ -170,7 +270,7 @@ namespace zich
         }
     return m;
     }
-    Matrix& Matrix::operator-()
+    Matrix Matrix::operator-()
     {
     for (size_t i = 0; i < this->rows; i++)
         {
@@ -220,20 +320,20 @@ namespace zich
         return old;
     }
 
-    Matrix& Matrix::operator*(double num)
+    Matrix Matrix::operator*(double num)
     {
-        Matrix& m(*this);
+        Matrix m(*this);
         for (size_t i = 0; i < this->rows; i++)
             {
                 for (size_t j = 0; j < this->cols; j++)
                 {
-                    this->myMat.at(i).at(j) *= num;
+                    m.myMat.at(i).at(j) *= num;
                 }
             }
-    return m;
+        return m;
     }
 
-    Matrix& Matrix::operator*(const Matrix& other)
+    Matrix Matrix::operator*(const Matrix& other)
     {
         if (notCompatibleMult(*this, other))
             {
@@ -258,29 +358,32 @@ namespace zich
             v.push_back(ans);
         }
         
-        Matrix* m = new Matrix(v, c, r);
-        return *m;
+        Matrix m = Matrix(v, r, c);
+        return m;
     }
 
-    Matrix& Matrix::operator=(const Matrix& other)
-    {
-        if (notCompatible(*this, other))
-            {
-                throw std::invalid_argument("Different row \\ col number.");
-            }
+    // Matrix& Matrix::operator=(const Matrix& other)
+    // {
+    //     this->rows = other.rows;
+    //     this->cols = other.cols;
 
+    //     std::vector<std::vector<double>> newv;
+    //     for (size_t i = 0; i < other.rows; i++)
+    //         {
+    //             std::vector<double> v;
+    //             for (size_t j = 0; j < other.cols; j++)
+    //             {
+    //                 v.push_back(other.myMat.at(i).at(j));
+    //             }
+    //             newv.push_back(v);
+    //         }
+
+    //     this->myMat = newv;
+    //     return *this;
+    // }
+    Matrix Matrix::operator*=(const double num)
+    {
         for (size_t i = 0; i < this->rows; i++)
-            {
-                for (size_t j = 0; j < this->cols; j++)
-                {
-                    this->myMat.at(i).at(j) = other.myMat.at(i).at(j);
-                }
-            }
-        return *this;
-    }
-    Matrix& Matrix::operator*=(const double num)
-    {
-    for (size_t i = 0; i < this->rows; i++)
         {
             for (size_t j = 0; j < this->cols; j++)
             {
@@ -290,31 +393,38 @@ namespace zich
         return *this;
     }
 
-    Matrix& Matrix::operator*=(const Matrix& other)
+    Matrix Matrix::operator*=(const Matrix& other)
     {
         if (notCompatibleMult(*this, other))
-            throw std::invalid_argument("Different row \\ col number.");
-        return *this;
-    }
-
-    Matrix& Matrix::operator+=(const Matrix& other)
-    {
-        if (notCompatible(*this, other))
-            throw std::invalid_argument("Different row \\ col number.");
-        for (size_t i = 0; i < other.rows; i++)
-        {
-            std::vector<double> my_row = this->myMat.at(i);
-            std::vector<double> other_row = other.myMat.at(i);
-
-            for (size_t j = 0; j < other.cols; j++)
             {
-                my_row.at(j) += other_row.at(j);
+                throw std::invalid_argument("Different row \\ col number at A*=B.");
             }
+
+        size_t r = (size_t) this->rows;
+        size_t c = (size_t) other.cols;        
+        std::vector<double> v;
+
+        for (size_t i = 0; i < c * r; i++)
+        {
+            std::vector<double> v1;
+            std::vector<double> v2;
+            for (size_t k = 0; k < other.rows; k++)
+            {
+                v1.push_back(this->myMat.at(size_t (i / c)).at(k));     // Line vector of this matrix
+                v2.push_back(other.myMat.at(k).at(size_t (i % c)));     // Row vector of other matrix
+            }
+            double ans = multOfVectors (v1, v2);
+            v.push_back(ans);
         }
-        return *this;
+        
+        Matrix m = Matrix(v, r, c);
+        this->myMat = m.myMat;
+        this->rows = r;
+        this->cols = c;
+        return m;
     }
 
-    Matrix& Matrix::operator-=(const Matrix& other)
+    Matrix Matrix::operator+=(const Matrix& other)
     {
         if (notCompatible(*this, other))
             {
@@ -322,12 +432,25 @@ namespace zich
             }
         for (size_t i = 0; i < other.rows; i++)
         {
-            std::vector<double> my_row = this->myMat.at(i);
-            std::vector<double> other_row = other.myMat.at(i);
-
             for (size_t j = 0; j < other.cols; j++)
             {
-                my_row.at(j) -= other_row.at(j);
+                this->myMat.at(i).at(j) += other.myMat.at(i).at(j);
+            }
+        }
+        return *this;
+    }
+
+    Matrix Matrix::operator-=(const Matrix& other)
+    {
+        if (notCompatible(*this, other))
+            {
+                throw std::invalid_argument("Different row \\ col number.");
+            }
+        for (size_t i = 0; i < other.rows; i++)
+        {
+            for (size_t j = 0; j < other.cols; j++)
+            {
+                this->myMat.at(i).at(j) -= other.myMat.at(i).at(j);
             }
         }
         return *this;
@@ -352,6 +475,7 @@ namespace zich
             {
                 if ( m1.myMat.at(i).at(j) != m2.myMat.at(i).at(j) )
                     {
+                        //std::cout << "FALSE MAN";
                         return false;
                     }
             }
@@ -361,15 +485,18 @@ namespace zich
     bool operator!=(const Matrix& m1, const Matrix& m2)
     {
         if (notCompatible(m1, m2))
-            throw std::invalid_argument("Different row \\ col number.");
-
-        return !(operator==(m1,m2));
+{            throw std::invalid_argument("Different row \\ col number.");
+}
+        
+        // std::cout << m1 << std::endl;
+        // std::cout << m2 << std::endl;
+        return !(m1 == m2);
     }
     bool operator>(const Matrix& m1, const Matrix& m2)
     {
         if (notCompatible(m1, m2))
-            throw std::invalid_argument("Different row \\ col number.");
-
+{            throw std::invalid_argument("Different row \\ col number.");
+}
         double sum1 = 0;
         double sum2 = 0;
         for (size_t i = 0; i < m1.rows; i++)
@@ -388,16 +515,16 @@ namespace zich
     bool operator>=(const Matrix& m1, const Matrix& m2)
     {
         if (notCompatible(m1, m2))
-            throw std::invalid_argument("Different row \\ col number.");
-
+{            throw std::invalid_argument("Different row \\ col number.");
+}
         return operator==(m1,m2) || operator>(m1,m2);
     }
 
     bool operator<(const Matrix& m1, const Matrix& m2)
     {
         if (notCompatible(m1, m2))
-            throw std::invalid_argument("Different row \\ col number.");
-        double sum1 = 0;
+{            throw std::invalid_argument("Different row \\ col number.");
+}        double sum1 = 0;
         double sum2 = 0;
         for (size_t i = 0; i < m1.rows; i++)
         {
@@ -415,7 +542,9 @@ namespace zich
     bool operator<=(const Matrix& m1, const Matrix& m2)
     {
         if (notCompatible(m1, m2))
-            throw std::invalid_argument("Different row \\ col number.");
+            {
+                throw std::invalid_argument("Different row \\ col number.");
+            }
         return operator==(m1,m2) || operator<(m1,m2);
 
     }
